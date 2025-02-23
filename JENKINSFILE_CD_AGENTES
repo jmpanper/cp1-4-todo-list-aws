@@ -1,0 +1,62 @@
+pipeline {
+    agent any
+    environment {
+        SERVICE_BASE_URL = ""
+    }
+    stages {
+        
+
+        stage('GetCode') {
+            steps {
+                git branch: 'master', url: 'https://github.com/jmpanper/cp1-4-todo-list-aws.git'
+                sh 'ls -la'
+                echo "WORKSPACE: ${WORKSPACE}"
+            }
+        }
+        
+   
+        stage('Deploy') {
+            steps {
+                sh '''
+                    sam --version
+                    sam build --config-env staging
+                    sam validate --region us-east-1
+                '''
+                
+                // Manejo de errores en el despliegue sin eliminar el stack
+                catchError(buildResult: 'UNSTABLE', stageResult: 'SUCCESS') {
+                    sh 'sam deploy --config-env production --force-upload'
+                }
+                sh '''
+                    SERVICE_BASE_URL=$(aws cloudformation describe-stacks --stack-name todo-list-aws-staging \
+                    --query "Stacks[0].Outputs[?OutputKey==\'BaseUrlApi\'].OutputValue" --output text)
+
+                    if [ -z "$SERVICE_BASE_URL" ]; then
+                        echo "Error: No se pudo obtener la URL de la API."
+                        exit 1
+                    fi
+                    echo "SERVICE_BASE_URL=${SERVICE_BASE_URL}" > env_vars.txt
+                '''
+                def props = readProperties file: 'env_vars.txt'
+                env.SERVICE_BASE_URL = props.SERVICE_BASE_URL
+            }
+        }
+        
+
+        stage('Rest Test') {
+            agent { label 'integration' }
+            steps {
+                sh '''
+                    pytest --version
+                    
+                    # Ejecutar pytest especificando la variable de entorno directamente
+                    SERVICE_BASE_URL=$SERVICE_BASE_URL pytest \
+                        test/integration/todoApiTest.py::TestApi::test_api_listtodos \
+                        test/integration/todoApiTest.py::TestApi::test_api_gettodo \
+                        --junitxml=pytest-report.xml
+                '''
+            }
+        }
+        
+    }
+}

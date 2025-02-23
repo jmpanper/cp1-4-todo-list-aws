@@ -1,0 +1,49 @@
+pipeline {
+    agent any
+
+    stages {
+        stage('GetCode') {
+            steps {
+                git branch: 'master', url: 'https://github.com/jmpanper/cp1-4-todo-list-aws.git'
+                sh 'ls -la'
+                echo "WORKSPACE: ${WORKSPACE}"
+            }
+        }  
+            
+        stage('Deploy'){
+            steps{
+                sh '''
+                sam --version
+                sam build --config-env staging
+                sam validate --region us-east-1
+                '''
+                //La siguiente linea se usa pra no tener que eliminar el stack cada vez que se va a ejecutar el pipeline
+                catchError(buildResult: 'UNSTABLE', stageResult: 'SUCCESS'){
+                    sh 'sam deploy --config-env production --force-upload'
+                }
+                //sh 'sam deploy --config-env staging --force-upload'
+            }
+        }
+        stage('Rest Test'){
+            steps{
+                //Configurar la variable de entorno para que pueda se utilizada por las pruebas y ejecutar pruebas con pytest
+                sh '''
+                    pytest --version
+                    SERVICE_BASE_URL=$(aws cloudformation describe-stacks --stack-name todo-list-aws-staging \
+                    --query "Stacks[0].Outputs[?OutputKey==\'BaseUrlApi\'].OutputValue" --output text)
+
+ 
+                    if [ -z "$SERVICE_BASE_URL" ]; then
+                    echo "Error: No se pudo obtener la URL de la API."
+                    exit 1
+                    fi
+                    
+                    # Ejecutar pytest especificando la variable de entorno directamente
+                    SERVICE_BASE_URL=$SERVICE_BASE_URL pytest test/integration/todoApiTest.py::TestApi::test_api_listtodos test/integration/todoApiTest.py::TestApi::test_api_gettodo --junitxml=pytest-report.xml
+                '''
+            }
+                
+        }
+        
+    }
+}
