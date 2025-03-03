@@ -14,7 +14,7 @@ pipeline {
             steps{
                 sh '''
                 sam --version
-                sam build --config-env staging
+                sam build --config-env production
                 sam validate --region us-east-1
                 '''
                 //La siguiente linea se usa pra no tener que eliminar el stack cada vez que se va a ejecutar el pipeline
