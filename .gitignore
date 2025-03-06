@@ -5,3 +5,5 @@ tests
 pyenvunittests
 .coverage
 coverage.xml
+# Ignorar cualquier archivo que contenga "JENKINSFILE" en el nombre
+*JENKINSFILE*
