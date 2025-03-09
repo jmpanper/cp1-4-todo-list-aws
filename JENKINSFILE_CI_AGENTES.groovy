@@ -1,9 +1,6 @@
 pipeline {
     agent any
 
-    environment {
-        SERVICE_BASE_URL = ""
-    }
     
     stages {
         
@@ -47,10 +44,12 @@ pipeline {
                         echo "Error: No se pudo obtener la URL de la API."
                         exit 1
                     fi
-                    echo "SERVICE_BASE_URL=${SERVICE_BASE_URL}" > env_vars.txt
+                    
+                    touch /tmp/service_base_url_ci.txt
+                    echo "${SERVICE_BASE_URL}" > /tmp/service_base_url_ci.txt
+
                 '''
-                def props = readProperties file: 'env_vars.txt'
-                env.SERVICE_BASE_URL = props.SERVICE_BASE_URL
+
             }
         }
         
@@ -59,13 +58,14 @@ pipeline {
             agent { label 'integration' }
             steps {
                 sh '''
-                    pytest --version
-                    
-                    SERVICE_BASE_URL=$SERVICE_BASE_URL pytest test/integration/todoApiTest.py --junitxml=pytest-report.xml
-                '''
+                pytest --version
+                export SERVICE_BASE_URL=$(cat /tmp/service_base_url_ci.txt | tr -d '[:space:]')
+                echo "DEBUG: URL en ENV -> $SERVICE_BASE_URL"
+                env | grep SERVICE_BASE_URL || echo "SERVICE_BASE_URL no está en env"
+                pytest /home/ubuntu/cp1-4-todo-list-aws/test/integration/todoApiTest.py --junitxml=pytest-report.xml
+            '''
             }
         }
-        
 
         stage('Promote') {
             steps {
